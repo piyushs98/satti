@@ -222,117 +222,114 @@
 
     <!-- Firebase Script -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // =========================================================================
-        // Safe Storage Wrappers (Prevents crashes in strict browser modes)
-        // =========================================================================
-        function safeGet(key) { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } }
-        function safeSet(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
-        function safeRemove(key) { try { localStorage.removeItem(key); } catch(e) {} }
+    // =========================================================================
+    // Safe Storage Wrappers
+    // =========================================================================
+    function safeGet(key) { try { return localStorage.getItem(key) || ''; } catch(e) { return ''; } }
+    function safeSet(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
+    function safeRemove(key) { try { localStorage.removeItem(key); } catch(e) {} }
 
-        // =========================================================================
-        // 1. Initialize Firebase
-        // =========================================================================
-        const myFirebaseConfig = {
-            apiKey: "AIzaSyCLQjJ8USSQ4XYBmULQWNo5GNY-fFGu2SA",
-            authDomain: "satti-1dc19.firebaseapp.com",
-            projectId: "satti-1dc19",
-            storageBucket: "satti-1dc19.firebasestorage.app",
-            messagingSenderId: "976314541691",
-            appId: "1:976314541691:web:dcfa9d6acd410e97be24de",
-            measurementId: "G-K4LYMYR7P5"
-        };
-        
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : myFirebaseConfig;
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'satti-default';
+    // =========================================================================
+    // 1. Initialize Firebase
+    // =========================================================================
+    const myFirebaseConfig = {
+        apiKey: "AIzaSyCLQjJ8USSQ4XYBmULQWNo5GNY-fFGu2SA",
+        authDomain: "satti-1dc19.firebaseapp.com",
+        projectId: "satti-1dc19",
+        storageBucket: "satti-1dc19.firebasestorage.app",
+        messagingSenderId: "976314541691",
+        appId: "1:976314541691:web:dcfa9d6acd410e97be24de",
+        measurementId: "G-K4LYMYR7P5"
+    };
+    
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : myFirebaseConfig;
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'satti-default';
 
-        // Variables
-        let currentUser = null;
-        let playerName = safeGet('satti_playerName');
-        let currentRoomId = null;
-        let unsubscribeLobby = null;
-        let unsubscribeRoom = null;
-        let currentGameState = null; 
-        
-        const urlParams = new URLSearchParams(window.location.search);
-        let pendingRoomId = urlParams.get('room');
+    // Variables
+    let currentUser = null;
+    let playerName = safeGet('satti_playerName');
+    let currentRoomId = null;
+    let unsubscribeLobby = null;
+    let unsubscribeRoom = null;
+    let currentGameState = null; 
+    let nameSubmitted = false;                    // ←←← NEW: Fixes the stuck name page
 
-        function cleanUrl() {
-            try { window.history.replaceState({}, document.title, window.location.pathname); } catch (e) {}
-        }
+    const urlParams = new URLSearchParams(window.location.search);
+    let pendingRoomId = urlParams.get('room');
 
-        // Game Constants
-        const SUITS = { Hearts: '♥', Diamonds: '♦', Clubs: '♣', Spades: '♠' };
-        const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-        const RANK_VALUES = { 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13 };
+    function cleanUrl() {
+        try { window.history.replaceState({}, document.title, window.location.pathname); } catch (e) {}
+    }
 
-        function proceedToLobbyOrRoom() {
-            document.getElementById('name-modal').classList.add('hidden');
-            document.getElementById('user-info').classList.remove('hidden');
-            document.getElementById('header-player-name').innerText = playerName;
+    // Game Constants
+    const SUITS = { Hearts: '♥', Diamonds: '♦', Clubs: '♣', Spades: '♠' };
+    const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+    const RANK_VALUES = { 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13 };
 
-            const savedRoomId = safeGet('satti_roomId');
-            if (pendingRoomId) { joinRoom(pendingRoomId); pendingRoomId = null; cleanUrl(); } 
-            else if (savedRoomId) { joinRoom(savedRoomId); } 
-            else { showLobby(); }
-        }
+    function proceedToLobbyOrRoom() {
+        document.getElementById('name-modal').classList.add('hidden');
+        document.getElementById('user-info').classList.remove('hidden');
+        document.getElementById('header-player-name').innerText = playerName;
 
-        // 2. Authentication Logic
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                if (playerName) {
-                    proceedToLobbyOrRoom();
-                } else {
-                    document.getElementById('name-modal').classList.remove('hidden');
-                }
-            }
-        });
+        const savedRoomId = safeGet('satti_roomId');
+        if (pendingRoomId) { joinRoom(pendingRoomId); pendingRoomId = null; cleanUrl(); } 
+        else if (savedRoomId) { joinRoom(savedRoomId); } 
+        else { showLobby(); }
+    }
 
-        async function initAuth() {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) { 
-                console.error("Auth Error:", error); 
-                alert("Database Connection Error! Please make sure 'Anonymous' Sign-in is enabled in your Firebase Console (Build -> Authentication -> Sign-in Method).");
-                const btn = document.getElementById('continue-btn');
-                if(btn) {
-                    btn.innerText = "Connection Failed";
-                    btn.classList.replace('bg-yellow-500', 'bg-red-600');
-                    btn.classList.replace('hover:bg-yellow-400', 'hover:bg-red-500');
-                    btn.classList.replace('text-black', 'text-white');
-                }
+    // 2. Authentication Logic (UPDATED)
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            currentUser = user;
+            if (playerName || nameSubmitted) {        // ←←← FIXED: Now checks nameSubmitted
+                proceedToLobbyOrRoom();
+            } else {
+                document.getElementById('name-modal').classList.remove('hidden');
             }
         }
-        initAuth();
+    });
 
-        // 3. UI Functions
-        window.saveName = () => {
-            const input = document.getElementById('player-name-input').value.trim();
-            if (input.length > 0) {
-                playerName = input;
-                safeSet('satti_playerName', playerName);
-                
-                if (currentUser) {
-                    proceedToLobbyOrRoom();
-                } else {
-                    const btn = document.getElementById('continue-btn');
-                    btn.innerText = "Connecting to Server...";
-                    btn.disabled = true;
-                    btn.classList.add('opacity-75', 'cursor-not-allowed');
-                }
+    async function initAuth() {
+        try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
             }
-        };
+        } catch (error) { 
+            console.error("Auth Error:", error); 
+            alert("Database Connection Error! Please make sure 'Anonymous' Sign-in is enabled in your Firebase Console.");
+        }
+    }
+    initAuth();
+
+    // 3. UI Functions (UPDATED saveName)
+    window.saveName = () => {
+        const input = document.getElementById('player-name-input').value.trim();
+        if (input.length === 0) return;
+
+        playerName = input;
+        safeSet('satti_playerName', playerName);
+        nameSubmitted = true;                       // ←←← NEW: Marks that user submitted name
+
+        const btn = document.getElementById('continue-btn');
+        btn.innerText = "Connecting to Server...";
+        btn.disabled = true;
+        btn.classList.add('opacity-75', 'cursor-not-allowed');
+
+        // If auth is ready → proceed immediately
+        if (currentUser) {
+            proceedToLobbyOrRoom();
+        }
+        // Otherwise onAuthStateChanged will handle it
+    };
 
         if(playerName && document.getElementById('player-name-input')) {
             document.getElementById('player-name-input').value = playerName;

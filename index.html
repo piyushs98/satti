@@ -381,7 +381,6 @@
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
-                // Check if they have a player profile
                 const playerRef = doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid);
                 const snap = await getDoc(playerRef);
                 
@@ -390,7 +389,6 @@
                     setupPlayerListener();
                     proceedToDashboardOrRoom();
                 } else {
-                    // Profile doesn't exist. If they used Google, auto-create. Otherwise, ask for name.
                     if (user.displayName) {
                         await createProfile(user.displayName);
                         proceedToDashboardOrRoom();
@@ -462,7 +460,7 @@
         };
 
         // =========================================================================
-        // 2. DASHBOARD & FRIENDS
+        // 2. DASHBOARD & LOBBY
         // =========================================================================
 
         function proceedToDashboardOrRoom() {
@@ -481,14 +479,12 @@
             document.getElementById('dash-player-level').innerText = calculateLevel(currentPlayerDoc.wins);
             document.getElementById('dash-player-id').innerText = currentUser.uid;
 
-            // Load Friends
             const friendsList = document.getElementById('friends-list');
             const friends = currentPlayerDoc.friends || [];
             if(friends.length === 0) {
                 friendsList.innerHTML = '<p class="text-xs text-gray-500 italic">No friends added yet.</p>';
             } else {
                 friendsList.innerHTML = '';
-                // Fetch friend names (In production, use a cloud function or batch query)
                 for(let fUid of friends) {
                     const fSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', fUid));
                     if(fSnap.exists()) {
@@ -517,18 +513,13 @@
             if(!friendId || friendId === currentUser.uid) return;
             
             const fSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', friendId));
-            if(!fSnap.exists()) {
-                alert("Player ID not found.");
-                return;
-            }
+            if(!fSnap.exists()) { alert("Player ID not found."); return; }
 
             const playerRef = doc(db, 'artifacts', appId, 'public', 'data', 'players', currentUser.uid);
             await updateDoc(playerRef, { friends: arrayUnion(friendId) });
             document.getElementById('add-friend-input').value = '';
             alert(`Added ${fSnap.data().name} to friends!`);
         };
-
-        // --- LOBBY LOGIC ---
 
         function getRoomsCollection() { return collection(db, 'artifacts', appId, 'public', 'data', 'rooms'); }
 
@@ -593,7 +584,7 @@
         };
 
         // =========================================================================
-        // 3. ROOM & GAME ENGINE
+        // 3. ROOM & GAME ENGINE (Multi-Deck Fix Applied)
         // =========================================================================
 
         window.joinRoom = async (roomId) => {
@@ -626,7 +617,7 @@
                 }
 
                 if (data.status === 'waiting') {
-                    switchScreen('dashboard-screen'); // Keep dashboard bg
+                    switchScreen('dashboard-screen');
                     document.getElementById('game-over-modal').classList.add('hidden');
                     document.getElementById('waiting-modal').classList.remove('hidden');
                     updateWaitingUI(data);
@@ -636,7 +627,7 @@
                     document.getElementById('game-over-modal').classList.add('hidden');
                     renderGame(data);
                 } else if (data.status === 'finished') {
-                    switchScreen('game-area'); // Keep board visible behind modal
+                    switchScreen('game-area');
                     document.getElementById('waiting-modal').classList.add('hidden');
                     showGameOver(data);
                 }
@@ -660,17 +651,11 @@
             });
 
             const hostControls = document.getElementById('host-controls');
-            if (data.hostId === currentUser.uid && data.players.length > 1) {
-                hostControls.classList.remove('hidden');
-            } else {
-                hostControls.classList.add('hidden');
-            }
+            if (data.hostId === currentUser.uid && data.players.length > 1) hostControls.classList.remove('hidden');
+            else hostControls.classList.add('hidden');
         }
 
-        window.copyRoomCode = () => {
-            navigator.clipboard.writeText(currentRoomId);
-            alert("Room Code Copied!");
-        };
+        window.copyRoomCode = () => { navigator.clipboard.writeText(currentRoomId); alert("Room Code Copied!"); };
 
         window.leaveRoom = async () => {
             if (unsubscribeRoom) { unsubscribeRoom(); unsubscribeRoom = null; }
@@ -706,13 +691,9 @@
                     }
                 } catch(e) {}
             }
-            currentRoomId = null;
-            currentGameState = null;
-            cleanUrl();
-            showLobby();
+            currentRoomId = null; currentGameState = null; cleanUrl(); showLobby();
         };
 
-        // --- Game Logic ---
         const SUITS = { Hearts: '♥', Diamonds: '♦', Clubs: '♣', Spades: '♠' };
         const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
         const RANK_VALUES = { 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13 };
@@ -759,10 +740,13 @@
                 }
             }
 
-            const grid = {
-                Hearts: { min: null, max: null, cards: [] }, Spades: { min: null, max: null, cards: [] },
-                Diamonds: { min: null, max: null, cards: [] }, Clubs: { min: null, max: null, cards: [] }
-            };
+            const grid = { Hearts: [], Spades: [], Diamonds: [], Clubs: [] };
+            for (let i = 0; i < deckCount; i++) {
+                grid.Hearts.push({ min: null, max: null, cards: [] });
+                grid.Spades.push({ min: null, max: null, cards: [] });
+                grid.Diamonds.push({ min: null, max: null, cards: [] });
+                grid.Clubs.push({ min: null, max: null, cards: [] });
+            }
 
             await updateDoc(doc(getRoomsCollection(), currentRoomId), {
                 status: 'playing', hands, grid, turnIndex: startingPlayerIndex, activeUids
@@ -771,12 +755,38 @@
 
         function isCardPlayable(card, grid, isFirstMove) {
             if (isFirstMove) return card.suit === 'Hearts' && card.rank === '7';
-            const suitData = grid[card.suit];
-            if (card.rank === '7') return true; 
-            if (suitData.min !== null) {
-                if (card.value >= suitData.min && card.value <= suitData.max) return true; // Dupes
-                if (card.value === suitData.min - 1) return true;
-                if (card.value === suitData.max + 1) return true;
+            
+            const lanes = Array.isArray(grid[card.suit]) ? grid[card.suit] : [grid[card.suit]];
+            
+            if (card.rank === '7') {
+                return lanes.some(lane => lane.min === null);
+            }
+            
+            for (let lane of lanes) {
+                if (lane.min !== null) {
+                    if (card.value === lane.min - 1) return true;
+                    if (card.value === lane.max + 1) return true;
+                }
+            }
+            return false;
+        }
+
+        function placeCardOnGrid(card, grid) {
+            const lanes = Array.isArray(grid[card.suit]) ? grid[card.suit] : [grid[card.suit]];
+            
+            if (card.rank === '7') {
+                let emptyLane = lanes.find(l => l.min === null);
+                if (emptyLane) {
+                    emptyLane.cards.push(card); emptyLane.min = 7; emptyLane.max = 7;
+                    return true;
+                }
+            } else {
+                for (let lane of lanes) {
+                    if (lane.min !== null) {
+                        if (card.value === lane.min - 1) { lane.cards.push(card); lane.min = card.value; return true; }
+                        if (card.value === lane.max + 1) { lane.cards.push(card); lane.max = card.value; return true; }
+                    }
+                }
             }
             return false;
         }
@@ -785,20 +795,16 @@
             if (hand.length === 0) return false;
             let simHand = JSON.parse(JSON.stringify(hand));
             let simGrid = JSON.parse(JSON.stringify(grid));
-            let isFirstMove = simGrid['Hearts'].cards.length === 0;
+            
+            const heartsLanes = Array.isArray(simGrid['Hearts']) ? simGrid['Hearts'] : [simGrid['Hearts']];
+            let isFirstMove = heartsLanes.every(l => l.min === null);
 
             let playedInLoop = true;
             while (playedInLoop && simHand.length > 0) {
                 playedInLoop = false;
                 for (let i = 0; i < simHand.length; i++) {
                     if (isCardPlayable(simHand[i], simGrid, isFirstMove)) {
-                        let card = simHand[i];
-                        simGrid[card.suit].cards.push(card);
-                        if (simGrid[card.suit].min === null) { simGrid[card.suit].min = 7; simGrid[card.suit].max = 7; } 
-                        else {
-                            if (card.value < simGrid[card.suit].min) simGrid[card.suit].min = card.value;
-                            if (card.value > simGrid[card.suit].max) simGrid[card.suit].max = card.value;
-                        }
+                        placeCardOnGrid(simHand[i], simGrid);
                         simHand.splice(i, 1);
                         isFirstMove = false;
                         playedInLoop = true;
@@ -822,15 +828,13 @@
         async function processWin(winnerUid, winMsg, finalHands, finalGrid, roundScores) {
             const newCumulative = { ...currentGameState.cumulativeScores };
             
-            // Add scores
             currentGameState.activeUids.forEach(uid => {
                 const pName = currentGameState.players.find(p=>p.uid===uid)?.name || 'Unknown';
                 if(!newCumulative[uid]) newCumulative[uid] = { name: pName, score: 0 };
                 newCumulative[uid].score += roundScores[uid];
             });
 
-            // Leveling Logic - Add +1 Win to the winner in the global DB
-            if (roundScores[winnerUid] === 0) { // Make sure they actually won and didn't penalty out
+            if (roundScores[winnerUid] === 0) {
                 const winnerRef = doc(db, 'artifacts', appId, 'public', 'data', 'players', winnerUid);
                 const winnerSnap = await getDoc(winnerRef);
                 if (winnerSnap.exists()) {
@@ -856,20 +860,16 @@
             if (checkAllClear(myHand, currentGameState.grid)) {
                 let simHand = JSON.parse(JSON.stringify(myHand));
                 let simGrid = JSON.parse(JSON.stringify(currentGameState.grid));
-                let isFirstMove = simGrid['Hearts'].cards.length === 0;
+                
+                const heartsLanes = Array.isArray(simGrid['Hearts']) ? simGrid['Hearts'] : [simGrid['Hearts']];
+                let isFirstMove = heartsLanes.every(l => l.min === null);
 
                 let playedInLoop = true;
                 while (playedInLoop && simHand.length > 0) {
                     playedInLoop = false;
                     for (let i = 0; i < simHand.length; i++) {
                         if (isCardPlayable(simHand[i], simGrid, isFirstMove)) {
-                            let card = simHand[i];
-                            simGrid[card.suit].cards.push(card);
-                            if (simGrid[card.suit].min === null) { simGrid[card.suit].min = 7; simGrid[card.suit].max = 7; } 
-                            else {
-                                if (card.value < simGrid[card.suit].min) simGrid[card.suit].min = card.value;
-                                if (card.value > simGrid[card.suit].max) simGrid[card.suit].max = card.value;
-                            }
+                            placeCardOnGrid(simHand[i], simGrid);
                             simHand.splice(i, 1);
                             isFirstMove = false;
                             playedInLoop = true;
@@ -897,28 +897,22 @@
             if (cardIndex === -1) return;
             
             const card = myHand[cardIndex];
-            const isFirstMove = currentGameState.grid['Hearts'].cards.length === 0;
+            
+            const heartsLanes = Array.isArray(currentGameState.grid['Hearts']) ? currentGameState.grid['Hearts'] : [currentGameState.grid['Hearts']];
+            const isFirstMove = heartsLanes.every(l => l.min === null);
 
             if (!isCardPlayable(card, currentGameState.grid, isFirstMove)) return;
 
-            // Penalty check
             if (myHand.length > 1 && checkAllClear(myHand, currentGameState.grid)) {
                 const newHands = { ...currentGameState.hands }; 
                 const roundScores = calculateRoundScores(newHands, currentGameState.activeUids);
-                roundScores[currentUser.uid] = 25; // Penalty
+                roundScores[currentUser.uid] = 25; 
                 await processWin(currentUser.uid, `${currentPlayerDoc.name} failed to declare All Clear! (+25) 🚨`, newHands, currentGameState.grid, roundScores);
                 return;
             }
 
             const newGrid = JSON.parse(JSON.stringify(currentGameState.grid));
-            newGrid[suit].cards.push(card);
-            
-            if (newGrid[suit].min === null) {
-                newGrid[suit].min = 7; newGrid[suit].max = 7;
-            } else {
-                if (card.value < newGrid[suit].min) newGrid[suit].min = card.value;
-                if (card.value > newGrid[suit].max) newGrid[suit].max = card.value;
-            }
+            placeCardOnGrid(card, newGrid);
 
             myHand.splice(cardIndex, 1);
             const newHands = { ...currentGameState.hands, [currentUser.uid]: myHand };
@@ -939,20 +933,22 @@
             if (currentGameState.activeUids[currentGameState.turnIndex] !== currentUser.uid) return; 
 
             const myHand = currentGameState.hands[currentUser.uid];
-            const isFirstMove = currentGameState.grid['Hearts'].cards.length === 0;
+            const heartsLanes = Array.isArray(currentGameState.grid['Hearts']) ? currentGameState.grid['Hearts'] : [currentGameState.grid['Hearts']];
+            const isFirstMove = heartsLanes.every(l => l.min === null);
+            
             if (myHand.some(card => isCardPlayable(card, currentGameState.grid, isFirstMove))) return;
 
             const nextTurn = (currentGameState.turnIndex + 1) % currentGameState.activeUids.length;
             await updateDoc(doc(getRoomsCollection(), currentRoomId), { turnIndex: nextTurn });
         };
 
-        // --- RENDER LOGIC ---
-
         function renderGame(data) {
             const myTurnIdx = data.activeUids ? data.activeUids.indexOf(currentUser.uid) : -1;
             const isMyTurn = data.turnIndex === myTurnIdx;
             const amIActive = myTurnIdx !== -1;
-            const isFirstMove = data.grid['Hearts'].cards.length === 0;
+            
+            const heartsLanes = Array.isArray(data.grid['Hearts']) ? data.grid['Hearts'] : [data.grid['Hearts']];
+            const isFirstMove = heartsLanes.every(l => l.min === null);
 
             const playersList = document.getElementById('ingame-players-list');
             playersList.innerHTML = '';
@@ -977,45 +973,42 @@
 
             const board = document.getElementById('board-grid');
             board.innerHTML = '';
+            
             Object.keys(SUITS).forEach(suitName => {
-                const rowWrapper = document.createElement('div');
-                rowWrapper.className = 'w-full overflow-x-auto hide-scroll text-center pb-2 mb-2 sm:mb-4';
-                const rowDiv = document.createElement('div');
-                rowDiv.className = 'inline-flex items-center px-4';
+                const lanes = Array.isArray(data.grid[suitName]) ? data.grid[suitName] : [data.grid[suitName]];
                 
-                const label = document.createElement('div');
-                label.className = `shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-white mr-3 sm:mr-6 text-xl sm:text-2xl shadow-lg border-2 border-white/20 z-10 ${suitName==='Hearts'||suitName==='Diamonds'?'text-red-600':'text-gray-900'}`;
-                label.innerHTML = SUITS[suitName];
-                rowDiv.appendChild(label);
+                lanes.forEach((suitData) => {
+                    const rowWrapper = document.createElement('div');
+                    rowWrapper.className = 'w-full overflow-x-auto hide-scroll text-center pb-2 mb-2 sm:mb-4';
+                    const rowDiv = document.createElement('div');
+                    rowDiv.className = 'inline-flex items-center px-4';
+                    
+                    const label = document.createElement('div');
+                    label.className = `shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-white mr-3 sm:mr-6 text-xl sm:text-2xl shadow-lg border-2 border-white/20 z-10 ${suitName==='Hearts'||suitName==='Diamonds'?'text-red-600':'text-gray-900'}`;
+                    label.innerHTML = SUITS[suitName];
+                    rowDiv.appendChild(label);
 
-                const suitData = data.grid[suitName];
-                if (suitData.cards.length === 0) {
-                    rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-white/30 text-xs shadow-inner">Empty</div>`;
-                } else {
-                    const grouped = {};
-                    suitData.cards.forEach(c => { if(!grouped[c.value]) grouped[c.value] = []; grouped[c.value].push(c); });
-                    if (suitData.min > 1) rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[10px] text-white/40 mr-1 sm:mr-2"><- A..${suitData.min-1}</div>`;
+                    if (suitData.min === null) {
+                        rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-white/30 text-xs shadow-inner">Empty</div>`;
+                    } else {
+                        if (suitData.min > 1) rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[10px] sm:text-xs text-white/40 mr-1 sm:mr-2 shadow-inner"><- A..${suitData.min-1}</div>`;
 
-                    for(let val = suitData.min; val <= suitData.max; val++) {
-                        if(grouped[val]) {
-                            const c = grouped[val][0];
-                            const count = grouped[val].length;
+                        const sortedCards = [...suitData.cards].sort((a,b) => a.value - b.value);
+                        sortedCards.forEach(c => {
                             const colorClass = (c.suit === 'Hearts' || c.suit === 'Diamonds') ? 'red' : 'black';
-                            const badge = count > 1 ? `<div class="absolute -top-2 -right-2 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold shadow z-10 border border-white/50">${count}</div>` : '';
-                            
                             rowDiv.innerHTML += `
                                 <div class="playing-card ${colorClass} shrink-0 mx-0.5 sm:mx-1 relative w-11 h-16 sm:w-14 sm:h-20">
-                                    ${badge}
                                     <div class="text-[10px] sm:text-xs font-bold leading-none self-start ml-1 mt-1">${c.rank}</div>
                                     <div class="text-lg sm:text-2xl self-center flex-1 flex items-center">${SUITS[c.suit]}</div>
                                 </div>
                             `;
-                        }
+                        });
+                        
+                        if (suitData.max < 13) rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[10px] sm:text-xs text-white/40 ml-1 sm:ml-2 shadow-inner">${suitData.max+1}..K -></div>`;
                     }
-                    if (suitData.max < 13) rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[10px] text-white/40 ml-1 sm:ml-2">${suitData.max+1}..K -></div>`;
-                }
-                rowWrapper.appendChild(rowDiv);
-                board.appendChild(rowWrapper);
+                    rowWrapper.appendChild(rowDiv);
+                    board.appendChild(rowWrapper);
+                });
             });
 
             const handDiv = document.getElementById('player-hand');

@@ -231,7 +231,7 @@
         </div>
 
         <!-- Center Grid Area -->
-        <div class="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-6 flex flex-col items-center justify-center w-full relative z-0" id="board-grid">
+        <div class="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-6 flex flex-col items-center justify-start pt-6 sm:pt-10 w-full relative z-0" id="board-grid">
             <!-- Grid suits will be generated here -->
         </div>
 
@@ -254,7 +254,7 @@
                     </div>
                 </div>
                 <!-- Cards -->
-                <div id="player-hand" class="flex flex-wrap justify-center content-center gap-1.5 sm:gap-2 p-4 sm:p-6 min-h-[140px] max-h-[40vh] overflow-y-auto hide-scroll">
+                <div id="player-hand" class="flex flex-wrap justify-center content-start gap-1 sm:gap-2 p-3 sm:p-4 min-h-[120px] max-h-[35vh] overflow-y-auto hide-scroll">
                     <!-- Cards will be generated here -->
                 </div>
             </div>
@@ -979,32 +979,32 @@
                 
                 lanes.forEach((suitData) => {
                     const rowWrapper = document.createElement('div');
-                    rowWrapper.className = 'w-full overflow-x-auto hide-scroll text-center pb-2 mb-2 sm:mb-4';
+                    rowWrapper.className = 'w-full overflow-x-auto hide-scroll text-center py-2 mb-1 sm:mb-2';
                     const rowDiv = document.createElement('div');
                     rowDiv.className = 'inline-flex items-center px-4';
                     
                     const label = document.createElement('div');
-                    label.className = `shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-white mr-3 sm:mr-6 text-xl sm:text-2xl shadow-lg border-2 border-white/20 z-10 ${suitName==='Hearts'||suitName==='Diamonds'?'text-red-600':'text-gray-900'}`;
+                    label.className = `shrink-0 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center bg-white mr-2 sm:mr-4 text-base sm:text-xl shadow-lg border-2 border-white/20 z-10 ${suitName==='Hearts'||suitName==='Diamonds'?'text-red-600':'text-gray-900'}`;
                     label.innerHTML = SUITS[suitName];
                     rowDiv.appendChild(label);
 
                     if (suitData.min === null) {
-                        rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-white/30 text-xs shadow-inner">Empty</div>`;
+                        rowDiv.innerHTML += `<div class="w-9 h-14 sm:w-12 sm:h-18 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-white/30 text-[10px] shadow-inner">Empty</div>`;
                     } else {
-                        if (suitData.min > 1) rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[10px] sm:text-xs text-white/40 mr-1 sm:mr-2 shadow-inner"><- A..${suitData.min-1}</div>`;
+                        if (suitData.min > 1) rowDiv.innerHTML += `<div class="w-9 h-14 sm:w-12 sm:h-18 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[9px] sm:text-[10px] text-white/40 mr-1 sm:mr-2 shadow-inner"><- A..${suitData.min-1}</div>`;
 
                         const sortedCards = [...suitData.cards].sort((a,b) => a.value - b.value);
                         sortedCards.forEach(c => {
                             const colorClass = (c.suit === 'Hearts' || c.suit === 'Diamonds') ? 'red' : 'black';
                             rowDiv.innerHTML += `
-                                <div class="playing-card ${colorClass} shrink-0 mx-0.5 sm:mx-1 relative w-11 h-16 sm:w-14 sm:h-20">
-                                    <div class="text-[10px] sm:text-xs font-bold leading-none self-start ml-1 mt-1">${c.rank}</div>
-                                    <div class="text-lg sm:text-2xl self-center flex-1 flex items-center">${SUITS[c.suit]}</div>
+                                <div class="playing-card ${colorClass} shrink-0 mx-0.5 sm:mx-1 relative w-9 h-14 sm:w-12 sm:h-18">
+                                    <div class="text-[9px] sm:text-[10px] font-bold leading-none self-start ml-1 mt-1">${c.rank}</div>
+                                    <div class="text-base sm:text-xl self-center flex-1 flex items-center">${SUITS[c.suit]}</div>
                                 </div>
                             `;
                         });
                         
-                        if (suitData.max < 13) rowDiv.innerHTML += `<div class="w-10 h-14 sm:w-14 sm:h-20 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[10px] sm:text-xs text-white/40 ml-1 sm:ml-2 shadow-inner">${suitData.max+1}..K -></div>`;
+                        if (suitData.max < 13) rowDiv.innerHTML += `<div class="w-9 h-14 sm:w-12 sm:h-18 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[9px] sm:text-[10px] text-white/40 ml-1 sm:ml-2 shadow-inner">${suitData.max+1}..K -></div>`;
                     }
                     rowWrapper.appendChild(rowDiv);
                     board.appendChild(rowWrapper);
@@ -1033,9 +1033,9 @@
                     const colorClass = (card.suit === 'Hearts' || card.suit === 'Diamonds') ? 'red' : 'black';
                     const disabledClass = !playable ? 'disabled' : '';
                     handDiv.innerHTML += `
-                        <div class="playing-card hand-card ${colorClass} ${disabledClass} w-12 h-16 sm:w-16 sm:h-24 p-1 sm:p-2 flex-shrink-0" ${playable ? `onclick="playCard('${card.suit}', '${card.rank}')"` : ''}>
-                            <div class="text-xs sm:text-base leading-none self-start ml-1">${card.rank}</div>
-                            <div class="text-xl sm:text-3xl self-center flex-1 flex items-center">${SUITS[card.suit]}</div>
+                        <div class="playing-card hand-card ${colorClass} ${disabledClass} w-10 h-16 sm:w-14 sm:h-20 p-1 flex-shrink-0" ${playable ? `onclick="playCard('${card.suit}', '${card.rank}')"` : ''}>
+                            <div class="text-[10px] sm:text-xs font-bold leading-none self-start ml-1">${card.rank}</div>
+                            <div class="text-xl sm:text-2xl self-center flex-1 flex items-center">${SUITS[card.suit]}</div>
                         </div>
                     `;
                 });

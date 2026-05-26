@@ -749,7 +749,7 @@
             }
 
             await updateDoc(doc(getRoomsCollection(), currentRoomId), {
-                status: 'playing', hands, grid, turnIndex: startingPlayerIndex, activeUids
+                status: 'playing', hands, grid, turnIndex: startingPlayerIndex, activeUids, allClearStatus: {}
             });
         };
 
@@ -858,31 +858,14 @@
             const myHand = currentGameState.hands[currentUser.uid];
             
             if (checkAllClear(myHand, currentGameState.grid)) {
-                let simHand = JSON.parse(JSON.stringify(myHand));
-                let simGrid = JSON.parse(JSON.stringify(currentGameState.grid));
+                const newAllClearStatus = { ...(currentGameState.allClearStatus || {}) };
+                newAllClearStatus[currentUser.uid] = true;
+
+                await updateDoc(doc(getRoomsCollection(), currentRoomId), {
+                    allClearStatus: newAllClearStatus
+                });
                 
-                const heartsLanes = Array.isArray(simGrid['Hearts']) ? simGrid['Hearts'] : [simGrid['Hearts']];
-                let isFirstMove = heartsLanes.every(l => l.min === null);
-
-                let playedInLoop = true;
-                while (playedInLoop && simHand.length > 0) {
-                    playedInLoop = false;
-                    for (let i = 0; i < simHand.length; i++) {
-                        if (isCardPlayable(simHand[i], simGrid, isFirstMove)) {
-                            placeCardOnGrid(simHand[i], simGrid);
-                            simHand.splice(i, 1);
-                            isFirstMove = false;
-                            playedInLoop = true;
-                            break;
-                        }
-                    }
-                }
-
-                const newHands = { ...currentGameState.hands, [currentUser.uid]: [] };
-                const roundScores = calculateRoundScores(newHands, currentGameState.activeUids);
-                roundScores[currentUser.uid] = 0;
-
-                await processWin(currentUser.uid, `${currentPlayerDoc.name} Declared All Clear! ⚡`, newHands, simGrid, roundScores);
+                alert("All Clear Declared! ⚡ You can now continue playing your remaining cards normally.");
             } else {
                 alert("Your hand is not completely playable yet.");
             }
@@ -903,7 +886,9 @@
 
             if (!isCardPlayable(card, currentGameState.grid, isFirstMove)) return;
 
-            if (myHand.length > 1 && checkAllClear(myHand, currentGameState.grid)) {
+            const hasDeclared = currentGameState.allClearStatus && currentGameState.allClearStatus[currentUser.uid];
+
+            if (myHand.length > 1 && !hasDeclared && checkAllClear(myHand, currentGameState.grid)) {
                 const newHands = { ...currentGameState.hands }; 
                 const roundScores = calculateRoundScores(newHands, currentGameState.activeUids);
                 roundScores[currentUser.uid] = 25; 
@@ -957,13 +942,14 @@
                 const isActive = data.activeUids && data.activeUids.includes(p.uid);
                 const isCurrent = data.turnIndex === (data.activeUids ? data.activeUids.indexOf(p.uid) : -1);
                 const handCount = data.hands && data.hands[p.uid] ? data.hands[p.uid].length : 0;
+                const isAllClear = data.allClearStatus && data.allClearStatus[p.uid];
                 
                 let styleClass = isCurrent ? 'bg-teal-500 text-white shadow-lg transform scale-105 border border-teal-300' : 'bg-black/40 border border-white/10 text-gray-300';
                 if (!isActive) styleClass = 'bg-black/50 text-gray-500 border border-white/5 opacity-50';
 
                 playersList.innerHTML += `
                     <li class="flex items-center px-4 py-2 rounded-full whitespace-nowrap transition-all duration-300 ${styleClass}">
-                        <span class="font-bold text-xs sm:text-sm mr-2">${p.name}</span>
+                        <span class="font-bold text-xs sm:text-sm mr-2">${p.name} ${isAllClear ? '<i class="fa-solid fa-bolt text-yellow-300 ml-1" title="All Clear Declared"></i>' : ''}</span>
                         ${isActive 
                             ? `<span class="text-[10px] sm:text-xs bg-black/40 px-2 py-0.5 rounded-full">${handCount} cards</span>` 
                             : `<span class="text-[10px] sm:text-xs bg-black/40 px-2 py-0.5 rounded-full"><i class="fa-solid fa-eye"></i></span>`}
@@ -1045,7 +1031,8 @@
                     indicator.className = 'text-sm sm:text-base font-bold px-5 py-2 rounded-full bg-teal-400 text-black shadow-lg flex items-center';
                     passBtn.classList.remove('hidden');
                     
-                    if (myHand.length > 1) allClearBtn.classList.remove('hidden');
+                    const hasDeclared = data.allClearStatus && data.allClearStatus[currentUser.uid];
+                    if (myHand.length > 1 && !hasDeclared) allClearBtn.classList.remove('hidden');
                     else allClearBtn.classList.add('hidden');
 
                     if (hasPlayableCard) {

@@ -940,16 +940,6 @@
 
             if (!isCardPlayable(card, currentGameState.grid, isFirstMove)) return;
 
-            const hasDeclared = currentGameState.allClearStatus && currentGameState.allClearStatus[currentUser.uid];
-
-            if (myHand.length > 1 && !hasDeclared && checkAllClear(myHand, currentGameState.grid)) {
-                const newHands = { ...currentGameState.hands }; 
-                const roundScores = calculateRoundScores(newHands, currentGameState.activeUids);
-                roundScores[currentUser.uid] = 25; 
-                await processWin(currentUser.uid, `${currentPlayerDoc.name} failed to declare All Clear! (+25) 🚨`, newHands, currentGameState.grid, roundScores);
-                return;
-            }
-
             const newGrid = JSON.parse(JSON.stringify(currentGameState.grid));
             placeCardOnGrid(card, newGrid);
 

@@ -603,7 +603,7 @@
         };
 
         // =========================================================================
-        // 3. ROOM & GAME ENGINE (Multi-Deck Fix Applied)
+        // 3. ROOM & GAME ENGINE
         // =========================================================================
 
         window.joinRoom = async (roomId) => {
@@ -1125,8 +1125,12 @@
                     passBtn.classList.remove('hidden');
                     
                     const hasDeclared = data.allClearStatus && data.allClearStatus[currentUser.uid];
-                    if (myHand.length > 1 && !hasDeclared) allClearBtn.classList.remove('hidden');
-                    else allClearBtn.classList.add('hidden');
+                    // Only show "All Clear" button if they HAVE NOT declared it yet, AND their hand is completely playable
+                    if (myHand.length > 1 && !hasDeclared && checkAllClear(myHand, data.grid)) {
+                        allClearBtn.classList.remove('hidden');
+                    } else {
+                        allClearBtn.classList.add('hidden');
+                    }
 
                     if (hasPlayableCard) {
                         passBtn.classList.add('opacity-50', 'cursor-not-allowed'); passBtn.disabled = true;

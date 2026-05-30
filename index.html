@@ -37,7 +37,7 @@
             font-weight: 800; 
             box-shadow: 0 4px 10px rgba(0,0,0,0.4); 
             user-select: none;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
         .playing-card.red { color: #dc2626; }
@@ -66,9 +66,24 @@
         /* Screen transitions */
         .screen { display: none; opacity: 0; transition: opacity 0.4s ease; }
         .screen.active { display: flex; opacity: 1; }
+        
+        /* Mobile Safe Area Padding */
+        .pb-safe { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+
+        /* Fly-Out Collapse Animation for Completed Rows */
+        @keyframes flyOutCollapse {
+            0% { transform: scale(1) translateY(0); opacity: 1; max-height: 150px; margin-bottom: 0.5rem; }
+            20% { transform: scale(1.05) translateY(-5px); opacity: 1; max-height: 150px; margin-bottom: 0.5rem; }
+            100% { transform: scale(0.2) translateY(-50px); opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border: none; }
+        }
+        .lane-complete {
+            animation: flyOutCollapse 1.5s cubic-bezier(0.5, 0, 0, 1) forwards !important;
+            overflow: hidden !important;
+            pointer-events: none;
+        }
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden selection:bg-teal-500 selection:text-white">
+<body class="h-[100dvh] flex flex-col overflow-hidden selection:bg-teal-500 selection:text-white">
 
     <!-- ================== SCREENS ================== -->
 
@@ -245,6 +260,9 @@
                         Waiting...
                     </div>
                     <div class="flex gap-2 sm:gap-3">
+                        <button id="reshuffle-btn" onclick="manualReshuffle()" class="hidden bg-white/10 hover:bg-white/20 border border-white/20 text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-bold transition text-sm sm:text-base flex items-center" title="Reshuffle Round">
+                            <i class="fa-solid fa-shuffle sm:mr-2"></i> <span class="hidden sm:inline">Reshuffle</span>
+                        </button>
                         <button id="all-clear-btn" onclick="declareAllClear()" class="hidden bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black px-5 sm:px-8 py-2 sm:py-2.5 rounded-full font-black transition shadow-[0_0_15px_rgba(245,158,11,0.5)] text-sm sm:text-base flex items-center transform hover:scale-105">
                             <i class="fa-solid fa-bolt mr-2"></i> ALL CLEAR
                         </button>
@@ -254,7 +272,7 @@
                     </div>
                 </div>
                 <!-- Cards -->
-                <div id="player-hand" class="flex flex-wrap justify-center content-start gap-1 sm:gap-2 p-3 sm:p-4 min-h-[120px] max-h-[35vh] overflow-y-auto hide-scroll">
+                <div id="player-hand" class="flex flex-wrap justify-center content-start gap-1.5 sm:gap-2 pt-5 pb-8 px-2 sm:px-6 min-h-[140px] max-h-[45vh] overflow-y-auto custom-scrollbar">
                     <!-- Cards will be generated here -->
                 </div>
             </div>
@@ -278,7 +296,7 @@
             <div class="bg-black/40 rounded-2xl p-4 mb-8 shadow-inner border border-white/5 text-left">
                 <p class="text-gray-400 mb-3 text-xs font-bold uppercase tracking-wider flex justify-between items-center">
                     <span>Players Joined</span>
-                    <span id="waiting-count" class="text-teal-300 bg-teal-900/30 px-2 py-0.5 rounded font-mono">1/8</span>
+                    <span id="waiting-count" class="text-teal-300 bg-teal-900/30 px-2 py-0.5 rounded font-mono">1/12</span>
                 </p>
                 <div id="waiting-players-list" class="space-y-2 min-h-[100px] max-h-[200px] overflow-y-auto custom-scrollbar pr-2"></div>
             </div>
@@ -363,6 +381,7 @@
         let unsubscribeRoom = null;
         let unsubscribePlayer = null;
         let currentGameState = null; 
+        let completedLanes = new Set(); // Tracks completed rows for animation
         
         const urlParams = new URLSearchParams(window.location.search);
         let pendingRoomId = urlParams.get('room');
@@ -545,7 +564,7 @@
                                 <div>
                                     <h4 class="font-bold text-white tracking-widest text-sm mb-1">ROOM: ${docSnap.id.substring(0,6)}</h4>
                                     <div class="flex gap-3 text-xs text-gray-400">
-                                        <span><i class="fa-solid fa-users text-teal-500 mr-1"></i> ${room.players.length}/8</span>
+                                        <span><i class="fa-solid fa-users text-teal-500 mr-1"></i> ${room.players.length}/12</span>
                                         <span><i class="fa-solid fa-crown text-yellow-500 mr-1"></i> ${room.hostName}</span>
                                     </div>
                                 </div>
@@ -608,6 +627,12 @@
                 const playerExists = data.players.find(p => p.uid === currentUser.uid);
                 
                 if (!playerExists) {
+                    if (data.players.length >= 12) {
+                        alert("This room is already full (12 players max).");
+                        safeRemove('satti_roomId');
+                        leaveRoom();
+                        return;
+                    }
                     const newPlayers = [...data.players, { uid: currentUser.uid, name: currentPlayerDoc.name }];
                     const newCumulative = data.cumulativeScores || {};
                     if (!newCumulative[currentUser.uid]) newCumulative[currentUser.uid] = { name: currentPlayerDoc.name, score: 0 };
@@ -636,7 +661,7 @@
 
         function updateWaitingUI(data) {
             document.getElementById('waiting-room-id').innerText = currentRoomId;
-            document.getElementById('waiting-count').innerText = `${data.players.length}/8`;
+            document.getElementById('waiting-count').innerText = `${data.players.length}/12`;
             
             const list = document.getElementById('waiting-players-list');
             list.innerHTML = '';
@@ -662,6 +687,7 @@
             document.getElementById('waiting-modal').classList.add('hidden');
             document.getElementById('game-over-modal').classList.add('hidden');
             safeRemove('satti_roomId');
+            completedLanes.clear(); // Reset animations
 
             if (currentRoomId && currentGameState) {
                 try {
@@ -712,9 +738,13 @@
             return deck;
         }
 
-        window.startGame = async () => {
+        window.startGame = async (isManualReshuffle = false) => {
             let deckCount = 1;
-            if (!document.getElementById('waiting-modal').classList.contains('hidden')) {
+            completedLanes.clear(); // Reset animations for new game
+
+            if (isManualReshuffle && currentGameState.deckCount) {
+                deckCount = currentGameState.deckCount;
+            } else if (!document.getElementById('waiting-modal').classList.contains('hidden')) {
                 deckCount = parseInt(document.getElementById('deck-count').value) || 1;
             } else {
                 deckCount = parseInt(document.getElementById('deck-count-gameover').value) || 1;
@@ -722,21 +752,39 @@
 
             if (!currentUser || currentGameState.hostId !== currentUser.uid) return;
             
-            const deck = generateDeck(deckCount);
             const activeUids = currentGameState.players.map(p => p.uid); 
-            const hands = {};
-            activeUids.forEach(uid => hands[uid] = []);
-            
-            let pIdx = 0;
-            deck.forEach(card => {
-                hands[activeUids[pIdx]].push(card);
-                pIdx = (pIdx + 1) % activeUids.length;
-            });
-
+            let validDeal = false;
+            let hands = {};
             let startingPlayerIndex = 0;
-            for(let i=0; i<activeUids.length; i++) {
-                if(hands[activeUids[i]].some(c => c.suit === 'Hearts' && c.rank === '7')) {
-                    startingPlayerIndex = i; break;
+            const kingThreshold = (deckCount * 2) + 1;
+
+            while (!validDeal) {
+                const deck = generateDeck(deckCount);
+                hands = {};
+                activeUids.forEach(uid => hands[uid] = []);
+                
+                let pIdx = 0;
+                deck.forEach(card => {
+                    hands[activeUids[pIdx]].push(card);
+                    pIdx = (pIdx + 1) % activeUids.length;
+                });
+
+                let needsReshuffle = false;
+                for (let uid of activeUids) {
+                    const kingCount = hands[uid].filter(c => c.rank === 'K').length;
+                    if (kingCount >= kingThreshold) {
+                        needsReshuffle = true;
+                        break;
+                    }
+                }
+
+                if (!needsReshuffle) {
+                    for(let i=0; i<activeUids.length; i++) {
+                        if(hands[activeUids[i]].some(c => c.suit === 'Hearts' && c.rank === '7')) {
+                            startingPlayerIndex = i; break;
+                        }
+                    }
+                    validDeal = true;
                 }
             }
 
@@ -749,8 +797,14 @@
             }
 
             await updateDoc(doc(getRoomsCollection(), currentRoomId), {
-                status: 'playing', hands, grid, turnIndex: startingPlayerIndex, activeUids, allClearStatus: {}
+                status: 'playing', hands, grid, turnIndex: startingPlayerIndex, activeUids, allClearStatus: {}, deckCount
             });
+        };
+
+        window.manualReshuffle = () => {
+            if (confirm("Are you sure you want to reshuffle and restart this round?")) {
+                startGame(true);
+            }
         };
 
         function isCardPlayable(card, grid, isFirstMove) {
@@ -935,6 +989,30 @@
             const heartsLanes = Array.isArray(data.grid['Hearts']) ? data.grid['Hearts'] : [data.grid['Hearts']];
             const isFirstMove = heartsLanes.every(l => l.min === null);
 
+            // 1. Calculate Active Lanes for Zooming Effect
+            let activeLanes = 0;
+            Object.keys(SUITS).forEach(s => {
+                const ls = Array.isArray(data.grid[s]) ? data.grid[s] : [data.grid[s]];
+                ls.forEach(l => { if (l.min !== 1 || l.max !== 13) activeLanes++; });
+            });
+
+            // Dynamic Sizing Classes (Zoom In Effect)
+            let szCardW = 'w-9 sm:w-12';
+            let szCardH = 'h-14 sm:h-18';
+            let szText = 'text-[9px] sm:text-[10px]';
+            let szIcon = 'text-base sm:text-xl';
+            let szBubble = 'w-7 h-7 sm:w-9 sm:h-9';
+
+            if (activeLanes <= 2) {
+                szCardW = 'w-12 sm:w-16'; szCardH = 'h-18 sm:h-24';
+                szText = 'text-xs sm:text-sm'; szIcon = 'text-xl sm:text-3xl';
+                szBubble = 'w-10 h-10 sm:w-12 sm:h-12';
+            } else if (activeLanes <= 4) {
+                szCardW = 'w-10 sm:w-14'; szCardH = 'h-16 sm:h-20';
+                szText = 'text-[10px] sm:text-xs'; szIcon = 'text-lg sm:text-2xl';
+                szBubble = 'w-8 h-8 sm:w-10 sm:h-10';
+            }
+
             const playersList = document.getElementById('ingame-players-list');
             playersList.innerHTML = '';
             
@@ -963,34 +1041,52 @@
             Object.keys(SUITS).forEach(suitName => {
                 const lanes = Array.isArray(data.grid[suitName]) ? data.grid[suitName] : [data.grid[suitName]];
                 
-                lanes.forEach((suitData) => {
+                lanes.forEach((suitData, laneIndex) => {
+                    const laneId = `${suitName}-${laneIndex}`;
+                    const isComplete = (suitData.min === 1 && suitData.max === 13);
+                    
+                    if (isComplete) {
+                        if (!completedLanes.has(laneId)) {
+                            completedLanes.add(laneId); // Render it this one time with animation!
+                        } else {
+                            return; // Skip rendering completely! Let it disappear.
+                        }
+                    } else {
+                        completedLanes.delete(laneId); // In case of a reshuffle
+                    }
+
                     const rowWrapper = document.createElement('div');
-                    rowWrapper.className = 'w-full overflow-x-auto hide-scroll text-center py-2 mb-1 sm:mb-2';
+                    rowWrapper.className = 'w-full overflow-x-auto hide-scroll text-center py-2 mb-1 sm:mb-2 transition-all duration-700 ease-in-out';
+                    
+                    if (isComplete) {
+                        rowWrapper.classList.add('lane-complete');
+                    }
+
                     const rowDiv = document.createElement('div');
                     rowDiv.className = 'inline-flex items-center px-4';
                     
                     const label = document.createElement('div');
-                    label.className = `shrink-0 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center bg-white mr-2 sm:mr-4 text-base sm:text-xl shadow-lg border-2 border-white/20 z-10 ${suitName==='Hearts'||suitName==='Diamonds'?'text-red-600':'text-gray-900'}`;
+                    label.className = `shrink-0 ${szBubble} rounded-full flex items-center justify-center bg-white mr-2 sm:mr-4 ${szIcon} shadow-lg border-2 border-white/20 z-10 ${suitName==='Hearts'||suitName==='Diamonds'?'text-red-600':'text-gray-900'} transition-all duration-500`;
                     label.innerHTML = SUITS[suitName];
                     rowDiv.appendChild(label);
 
                     if (suitData.min === null) {
-                        rowDiv.innerHTML += `<div class="w-9 h-14 sm:w-12 sm:h-18 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-white/30 text-[10px] shadow-inner">Empty</div>`;
+                        rowDiv.innerHTML += `<div class="${szCardW} ${szCardH} border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-white/30 text-[10px] shadow-inner transition-all duration-500">Empty</div>`;
                     } else {
-                        if (suitData.min > 1) rowDiv.innerHTML += `<div class="w-9 h-14 sm:w-12 sm:h-18 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[9px] sm:text-[10px] text-white/40 mr-1 sm:mr-2 shadow-inner"><- A..${suitData.min-1}</div>`;
+                        if (suitData.min > 1) rowDiv.innerHTML += `<div class="${szCardW} ${szCardH} border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center ${szText} text-white/40 mr-1 sm:mr-2 shadow-inner transition-all duration-500"><- A..${suitData.min-1}</div>`;
 
                         const sortedCards = [...suitData.cards].sort((a,b) => a.value - b.value);
                         sortedCards.forEach(c => {
                             const colorClass = (c.suit === 'Hearts' || c.suit === 'Diamonds') ? 'red' : 'black';
                             rowDiv.innerHTML += `
-                                <div class="playing-card ${colorClass} shrink-0 mx-0.5 sm:mx-1 relative w-9 h-14 sm:w-12 sm:h-18">
-                                    <div class="text-[9px] sm:text-[10px] font-bold leading-none self-start ml-1 mt-1">${c.rank}</div>
-                                    <div class="text-base sm:text-xl self-center flex-1 flex items-center">${SUITS[c.suit]}</div>
+                                <div class="playing-card ${colorClass} shrink-0 mx-0.5 sm:mx-1 relative ${szCardW} ${szCardH} transition-all duration-500">
+                                    <div class="${szText} font-bold leading-none self-start ml-1 mt-1">${c.rank}</div>
+                                    <div class="${szIcon} self-center flex-1 flex items-center">${SUITS[c.suit]}</div>
                                 </div>
                             `;
                         });
                         
-                        if (suitData.max < 13) rowDiv.innerHTML += `<div class="w-9 h-14 sm:w-12 sm:h-18 border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center text-[9px] sm:text-[10px] text-white/40 ml-1 sm:ml-2 shadow-inner">${suitData.max+1}..K -></div>`;
+                        if (suitData.max < 13) rowDiv.innerHTML += `<div class="${szCardW} ${szCardH} border-2 border-dashed border-white/20 rounded-lg flex items-center justify-center ${szText} text-white/40 ml-1 sm:ml-2 shadow-inner transition-all duration-500">${suitData.max+1}..K -></div>`;
                     }
                     rowWrapper.appendChild(rowDiv);
                     board.appendChild(rowWrapper);
@@ -1001,7 +1097,14 @@
             handDiv.innerHTML = '';
             const passBtn = document.getElementById('pass-btn');
             const allClearBtn = document.getElementById('all-clear-btn');
+            const reshuffleBtn = document.getElementById('reshuffle-btn');
             const indicator = document.getElementById('turn-indicator');
+            
+            if (data.hostId === currentUser.uid) {
+                reshuffleBtn.classList.remove('hidden');
+            } else {
+                reshuffleBtn.classList.add('hidden');
+            }
             
             if (amIActive) {
                 const myHand = data.hands[currentUser.uid] || [];
@@ -1019,9 +1122,9 @@
                     const colorClass = (card.suit === 'Hearts' || card.suit === 'Diamonds') ? 'red' : 'black';
                     const disabledClass = !playable ? 'disabled' : '';
                     handDiv.innerHTML += `
-                        <div class="playing-card hand-card ${colorClass} ${disabledClass} w-10 h-16 sm:w-14 sm:h-20 p-1 flex-shrink-0" ${playable ? `onclick="playCard('${card.suit}', '${card.rank}')"` : ''}>
+                        <div class="playing-card hand-card ${colorClass} ${disabledClass} w-11 h-16 sm:w-16 sm:h-24 p-1 sm:p-2 flex-shrink-0" ${playable ? `onclick="playCard('${card.suit}', '${card.rank}')"` : ''}>
                             <div class="text-[10px] sm:text-xs font-bold leading-none self-start ml-1">${card.rank}</div>
-                            <div class="text-xl sm:text-2xl self-center flex-1 flex items-center">${SUITS[card.suit]}</div>
+                            <div class="text-xl sm:text-3xl self-center flex-1 flex items-center">${SUITS[card.suit]}</div>
                         </div>
                     `;
                 });
